@@ -1,6 +1,7 @@
+import csv
 import re
 from dataclasses import dataclass
-from typing import List, Literal, Optional
+from typing import Dict, List, Literal, Optional
 
 Category = Literal["movies_at_home", "movies_in_theaters", "tv_series_browse"]
 Sorting = Literal[
@@ -114,22 +115,21 @@ RATINGS: List[Rating] = ["g", "nc_17", "nr", "pg", "pg_13", "r", "ur"]
 
 
 @dataclass
-class Score:
-    average_rating: float
-    banded_rating_count: str
-    liked_count: int
-    not_liked_count: int
-    review_count: int
-    score: int
-    sentiment: str
-
-
-@dataclass
-class Media:
+class MovieMetadata:
     title: str
     description: str
-    audience_score: Optional[Score]
-    critic_score: Optional[Score]
+    audience_score_average_rating: Optional[float]
+    audience_score_liked_count: Optional[int]
+    audience_score_not_liked_count: Optional[int]
+    audience_score_review_count: Optional[int]
+    audience_score_score: Optional[int]
+    audience_score_sentiment: Optional[str]
+    critic_score_average_rating: Optional[float]
+    critic_score_liked_count: Optional[int]
+    critic_score_not_liked_count: Optional[int]
+    critic_score_review_count: Optional[int]
+    critic_score_score: Optional[int]
+    critic_score_sentiment: Optional[str]
     director: Optional[List[str]]
     producer: Optional[List[str]]
     screenwriter: Optional[List[str]]
@@ -143,6 +143,76 @@ class Media:
     release_date_streaming: Optional[str]
     runtime: Optional[str]
     box_office: Optional[int]
+
+
+def export_data_to_csv(data: Dict[str, MovieMetadata], filename: str) -> None:
+    with open(filename, "w") as csvfile:
+        writer = csv.writer(csvfile)
+        writer.writerow(
+            [
+                "id",
+                "title",
+                "description",
+                "audience_score_average_rating",
+                "audience_score_liked_count",
+                "audience_score_not_liked_count",
+                "audience_score_review_count",
+                "audience_score_score",
+                "audience_score_sentiment",
+                "critic_score_average_rating",
+                "critic_score_liked_count",
+                "critic_score_not_liked_count",
+                "critic_score_review_count",
+                "critic_score_score",
+                "critic_score_sentiment",
+                "director",
+                "producer",
+                "screenwriter",
+                "distributor",
+                "production_company",
+                "genre",
+                "sound_mix",
+                "rating",
+                "original_language",
+                "release_date_theater",
+                "release_date_streaming",
+                "runtime",
+                "box_office",
+            ]
+        )
+        for id, media in data.items():
+            writer.writerow(
+                [
+                    id,
+                    media.title,
+                    media.description,
+                    media.audience_score_average_rating,
+                    media.audience_score_liked_count,
+                    media.audience_score_not_liked_count,
+                    media.audience_score_review_count,
+                    media.audience_score_score,
+                    media.audience_score_sentiment,
+                    media.critic_score_average_rating,
+                    media.critic_score_liked_count,
+                    media.critic_score_not_liked_count,
+                    media.critic_score_review_count,
+                    media.critic_score_score,
+                    media.critic_score_sentiment,
+                    media.director,
+                    media.producer,
+                    media.screenwriter,
+                    media.distributor,
+                    media.production_company,
+                    media.genre,
+                    media.sound_mix,
+                    media.rating,
+                    media.original_language,
+                    media.release_date_theater,
+                    media.release_date_streaming,
+                    media.runtime,
+                    media.box_office,
+                ]
+            )
 
 
 def parse_currency_to_number(text: str) -> Optional[int]:
@@ -168,3 +238,7 @@ def create_url(
     rating: Rating,
 ) -> str:
     return f"{BASE_URL}/browse/{category}/genres:{genre}~ratings:{rating}~{sorting}"
+
+
+def format_media_url(id: str) -> str:
+    return f"{BASE_URL}/m/{id}"

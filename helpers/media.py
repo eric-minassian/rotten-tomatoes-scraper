@@ -1,9 +1,10 @@
 import json
 from typing import List, Optional
 
+import requests
 from bs4 import BeautifulSoup
 
-from helpers.utils import Media, Score, parse_currency_to_number
+from helpers.utils import MovieMetadata, format_media_url, parse_currency_to_number
 
 
 def parse_movie_info(soup: BeautifulSoup, field: str) -> Optional[str]:
@@ -32,7 +33,7 @@ def parse_movie_info_list(soup: BeautifulSoup, filter: str) -> Optional[List[str
     return None
 
 
-def parse_media_html(html: str) -> Media:
+def parse_media_html(html: str) -> MovieMetadata:
     soup = BeautifulSoup(html, "html.parser")
 
     ratings = json.loads(soup.find("script", {"id": "media-scorecard-json"}).text)  # type: ignore
@@ -44,36 +45,54 @@ def parse_media_html(html: str) -> Media:
     critic_score = None
 
     if "audienceScore" in ratings:
-        audience_score = Score(
-            average_rating=ratings["audienceScore"]["averageRating"],
-            banded_rating_count=ratings["audienceScore"]["bandedRatingCount"],
-            liked_count=ratings["audienceScore"]["likedCount"],
-            not_liked_count=ratings["audienceScore"]["notLikedCount"],
-            review_count=ratings["audienceScore"]["reviewCount"],
-            score=ratings["audienceScore"]["score"],
-            sentiment=ratings["audienceScore"]["sentiment"],
-        )
+        audience_score_average_rating = ratings["audienceScore"]["averageRating"]
+        audience_score_liked_count = ratings["audienceScore"]["likedCount"]
+        audience_score_not_liked_count = ratings["audienceScore"]["notLikedCount"]
+        audience_score_review_count = ratings["audienceScore"]["reviewCount"]
+        audience_score_score = ratings["audienceScore"]["score"]
+        audience_score_sentiment = ratings["audienceScore"]["sentiment"]
+    else:
+        audience_score_average_rating = None
+        audience_score_liked_count = None
+        audience_score_not_liked_count = None
+        audience_score_review_count = None
+        audience_score_score = None
+        audience_score_sentiment = None
 
-    if "criticScore" in ratings:
-        critic_score = Score(
-            average_rating=ratings["criticScore"]["averageRating"],
-            banded_rating_count=ratings["criticScore"]["bandedRatingCount"],
-            liked_count=ratings["criticScore"]["likedCount"],
-            not_liked_count=ratings["criticScore"]["notLikedCount"],
-            review_count=ratings["criticScore"]["reviewCount"],
-            score=ratings["criticScore"]["score"],
-            sentiment=ratings["criticScore"]["sentiment"],
-        )
+    if "criticsScore" in ratings:
+        critic_score_average_rating = ratings["criticsScore"]["averageRating"]
+        critic_score_liked_count = ratings["criticsScore"]["likedCount"]
+        critic_score_not_liked_count = ratings["criticsScore"]["notLikedCount"]
+        critic_score_review_count = ratings["criticsScore"]["reviewCount"]
+        critic_score_score = ratings["criticsScore"]["score"]
+        critic_score_sentiment = ratings["criticsScore"]["sentiment"]
+    else:
+        critic_score_average_rating = None
+        critic_score_liked_count = None
+        critic_score_not_liked_count = None
+        critic_score_review_count = None
+        critic_score_score = None
+        critic_score_sentiment = None
 
     box_office = parse_movie_info(soup, "Box Office")
     if box_office is not None:
         box_office = parse_currency_to_number(box_office)
 
-    return Media(
+    return MovieMetadata(
         title=title,
         description=description,
-        audience_score=audience_score,
-        critic_score=critic_score,
+        audience_score_average_rating=audience_score_average_rating,
+        audience_score_liked_count=audience_score_liked_count,
+        audience_score_not_liked_count=audience_score_not_liked_count,
+        audience_score_review_count=audience_score_review_count,
+        audience_score_score=audience_score_score,
+        audience_score_sentiment=audience_score_sentiment,
+        critic_score_average_rating=critic_score_average_rating,
+        critic_score_liked_count=critic_score_liked_count,
+        critic_score_not_liked_count=critic_score_not_liked_count,
+        critic_score_review_count=critic_score_review_count,
+        critic_score_score=critic_score_score,
+        critic_score_sentiment=critic_score_sentiment,
         director=parse_movie_info_list(soup, "Director"),
         distributor=parse_movie_info_list(soup, "Distributor"),
         production_company=parse_movie_info_list(soup, "Production Co"),
@@ -88,3 +107,10 @@ def parse_media_html(html: str) -> Media:
         screenwriter=parse_movie_info_list(soup, "Screenwriter"),
         box_office=box_office,
     )
+
+
+def parse_media(id: str) -> MovieMetadata:
+    r = requests.get(format_media_url(id))
+    r.raise_for_status()
+
+    return parse_media_html(r.text)
