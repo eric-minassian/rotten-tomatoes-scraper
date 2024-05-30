@@ -217,7 +217,7 @@ def export_data_to_csv(data: Dict[str, MovieMetadata], filename: str) -> None:
 
 def parse_currency_to_number(text: str) -> Optional[int]:
     # Regular expression to match a currency value with an optional M/B suffix
-    pattern = r"[\$\€\£\¥]\s*(\d{1,3}(?:,\d{3})*(?:\.\d+)?)([MB]?)"
+    pattern = r"[\$\€\£\¥]\s*(\d{1,3}(?:,\d{3})*(?:\.\d+)?)([MBK]?)"
     match = re.search(pattern, text)
     if match:
         amount, multiplier = match.groups()
@@ -227,6 +227,8 @@ def parse_currency_to_number(text: str) -> Optional[int]:
             number *= 1_000_000
         elif multiplier == "B":
             number *= 1_000_000_000
+        elif multiplier == "K":
+            number *= 1_000
         return int(number)
     return None
 

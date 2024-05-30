@@ -1,6 +1,8 @@
-import logging
 import os
 import pickle
+import signal
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from threading import Lock
 
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service as ChromeService
@@ -11,7 +13,6 @@ from webdriver_manager.chrome import ChromeDriverManager
 
 from helpers.media import parse_media, parse_media_html
 from helpers.utils import (
-    BASE_URL,
     CATEGORIES,
     GENRES,
     MAX_PAGES,
@@ -23,6 +24,9 @@ from helpers.utils import (
     Sorting,
     create_url,
 )
+
+NUM_THREADS = 30
+BATCH_SIZE = 200
 
 
 def get_media_urls():
@@ -66,41 +70,35 @@ def get_media_urls():
     driver.quit()
 
 
+def process_movie(movie_id, movie_media, movie_media_mutex: Lock):
+    try:
+        media = parse_media(movie_id)
+        movie_media_mutex.acquire()
+        movie_media[movie_id] = media
+        movie_media_mutex.release()
+        return True, movie_id
+    except Exception as e:
+        return False, movie_id
+
+
+def save_data(movie_media, save_file_path):
+    with open(save_file_path + ".tmp", "wb") as file:
+        pickle.dump(movie_media, file)
+
+    os.rename(save_file_path + ".tmp", save_file_path)
+
+
+def handle_exit(signum, frame, executor, movie_media, save_file_path):
+    print("\nTermination signal received. Saving data before exit...")
+    save_data(movie_media, save_file_path)
+    executor.shutdown(wait=False)
+    print("Data saved. Exiting.")
+    os._exit(0)
+
+
 def main() -> None:
-    # get_media_urls()
-
-    # with open("movies_at_home.html") as file:
-    #     html = file.read()
-
-    # soup = BeautifulSoup(html, "html.parser")
-
-    # for div in soup.find_all("div", {"class": "flex-container"}):
-    #     name = str(
-    #         div.find("span", {"data-qa": "discovery-media-list-item-title"}).text
-    #     ).strip()
-    #     relative_url = div.find("a")["href"]
-    #     url = f"{BASE_URL}{relative_url}"
-
-    #     print(name, url)
-
-    # movie_ids = set()
-
-    # with open("/home/eric/Downloads/rotten_tomatoes_movies.csv") as file:
-    #     # Skip the header
-    #     file.readline()
-
-    #     for line in file:
-    #         movie_id = line.split(",")[0]
-    #         movie_ids.add(movie_id)
-
-    # print(f"Found {len(movie_ids)} movie ids")
-
-    # # Save the movie_ids to a file
-    # with open("movie_ids.pickle", "wb") as file:
-    #     pickle.dump(movie_ids, file)
-
     movie_ids = set()
-    with open("movie_ids_2.pickle", "rb") as file:
+    with open("movie_ids.pickle", "rb") as file:
         movie_ids = pickle.load(file)
 
     if os.path.exists("movie_metadata.pkl"):
@@ -109,34 +107,67 @@ def main() -> None:
     else:
         movie_media = {}
 
+    movie_media_mutex = Lock()
     error_count = 0
-    batch_size = 25
     save_file_path = "movie_metadata.pkl"
 
-    for idx, movie_id in enumerate(movie_ids):
-        if movie_id in movie_media:
-            continue
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        futures = {
+            executor.submit(
+                process_movie, movie_id, movie_media, movie_media_mutex
+            ): movie_id
+            for movie_id in movie_ids
+            if movie_id not in movie_media
+        }
 
-        try:
-            media = parse_media(movie_id)
-            # time.sleep(0.2)
-            movie_media[movie_id] = media
-        except Exception as e:
-            error_count += 1
-            continue
+        # Register the signal handler
+        signal.signal(
+            signal.SIGINT,
+            lambda signum, frame: handle_exit(
+                signum, frame, executor, movie_media, save_file_path
+            ),
+        )
 
-        if (idx + 1) % batch_size == 0:
-            with open(save_file_path, "wb") as file:
-                pickle.dump(movie_media, file)
+        for idx, future in enumerate(as_completed(futures)):
+            success, movie_id = future.result()
+            if not success:
+                error_count += 1
 
-            print(
-                f"ERROR PERCENTAGE: {(error_count / (idx + 1)) * 100}%, Processed {idx + 1} movies, error count: {error_count}, movies saved: {len(movie_media)}"
-            )
+            if (idx + 1) % BATCH_SIZE == 0:
+                movie_media_mutex.acquire()
+                save_data(movie_media, save_file_path)
+                movie_media_mutex.release()
+                print(
+                    f"ERROR PERCENTAGE: {(error_count / (idx + 1)) * 100}%, Processed {idx + 1} movies, error count: {error_count}, movies saved: {len(movie_media)}"
+                )
 
-    with open(save_file_path, "wb") as file:
-        pickle.dump(movie_media, file)
-
+    save_data(movie_media, save_file_path)
     print(f"Error count: {error_count}")
+
+    # for idx, movie_id in enumerate(movie_ids):
+    #     if movie_id in movie_media:
+    #         continue
+
+    #     try:
+    #         media = parse_media(movie_id)
+    #         # time.sleep(0.2)
+    #         movie_media[movie_id] = media
+    #     except Exception as e:
+    #         error_count += 1
+    #         continue
+
+    #     if (idx + 1) % batch_size == 0:
+    #         with open(save_file_path, "wb") as file:
+    #             pickle.dump(movie_media, file)
+
+    #         print(
+    #             f"ERROR PERCENTAGE: {(error_count / (idx + 1)) * 100}%, Processed {idx + 1} movies, error count: {error_count}, movies saved: {len(movie_media)}"
+    #         )
+
+    # with open(save_file_path, "wb") as file:
+    #     pickle.dump(movie_media, file)
+
+    # print(f"Error count: {error_count}")
 
 
 if __name__ == "__main__":
